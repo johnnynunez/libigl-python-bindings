@@ -29,24 +29,33 @@ jobs:
         path: dist/*.tar.gz
 
   build_wheels:
-    name: Build ${{ matrix.cpversion }} wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-13, macos-14]
-        # cp313 seemed to produce the same wheel name as cp312. Skip unless
-        # necessary.
-        cpversion: [cp38, cp39, cp310, cp311, cp312]
-        # github actions cp38 on macos-14 runners are cross compiling or
-        # something and confusing the stub generation. Just skip it for now.
-        # Maybe it'd be friendlier to disable the stub generation for this
-        # combination.
-        exclude:
-          - os: macos-14
-            cpversion: cp38
-
-
+        include:
+        - os: ubuntu-latest
+          pybuilds: cp3{9,10,11,12}-manylinux_x86_64
+          arch: x86_64
+          id: linux_x86_64
+        - os: ubuntu-24.04-arm
+          pybuilds: cp3{9,10,11,12}-manylinux_aarch64
+          arch: aarch64
+          id: linux_arm64
+        - os: macos-13
+          pybuilds: cp3{9,10,11,12}-macosx_x86_64
+          arch: x86_64
+          id: macos_x86
+        - os: macos-15
+          pybuilds: cp3{9,10,11,12}-macosx_arm64
+          arch: arm64
+          id: macos_arm64
+        - os: windows-latest
+          pybuilds: cp3{9,10,11,12}-win_amd64
+          arch: x86_64
+          id: windows_amd64
+          
     steps:
       - uses: actions/checkout@v4
 
@@ -60,13 +69,57 @@ jobs:
       - name: Build wheels
         # why do I need to specify this cpversion here?
         env:
-          CIBW_ARCHS: "auto64"
-          CIBW_BUILD: "${{ matrix.cpversion }}-*"
-          # why isn't auto64 working?
+          CIBW_BUILD: ${{ matrix.pybuilds }}
           CIBW_SKIP: "cp*-manylinux_i686 cp*-musllinux* cp*-win32"  
         run: python -m cibuildwheel --output-dir wheelhouse
 
       - uses: actions/upload-artifact@v4
+        name: Upload repaired wheels as artifact
         with:
-          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
-          path: ./wheelhouse/*.whl
+          name: ${{ matrix.os }}-${{ strategy.job-index }}}-${{ matrix.arch }}
+          path: |
+            ${{ steps.attest.outputs.bundle-path }}
+            ./wheelhouse/*.whl
+            ./wheelhouse/*.so
+            ./wheelhouse/*.dylib
+            ./wheelhouse/*.lib
+            ./wheelhouse/*.dll
+            
+  release_artifacts:
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    name: Release repaired and tested wheels
+    needs: build_wheels
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Optional, use if you use setuptools_scm
+        submodules: true  # Optional, use if you have submodules
+
+    - name: Download compressed artifacts
+      id: download
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+        merge-multiple: true
+
+    - name: Display structure of downloaded files
+      run: ls -R ./artifacts
+
+    - name: Create release and upload wheels
+      uses: ncipollo/release-action@v1
+      with:
+        allowUpdates: true
+        artifacts: "${{ steps.download.outputs.download-path }}/*.whl,${{ steps.download.outputs.download-path }}/*.gz,${{ steps.download.outputs.download-path }}/*.so,${{ steps.download.outputs.download-path }}/*.dylib,${{ steps.download.outputs.download-path }}/*.lib,${{ steps.download.outputs.download-path }}/*.dll"
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: PyPI Publish
+      uses: pypa/gh-action-pypi-publish@v1.12.4
+      with:
+        packages-dir: ${{ steps.download.outputs.download-path }}

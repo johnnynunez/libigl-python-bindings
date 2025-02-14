@@ -76,7 +76,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         name: Upload repaired wheels as artifact
         with:
-          name: ${{ matrix.os }}-${{ strategy.job-index }}}-${{ matrix.arch }}
+          name: ${{ matrix.os }}-${{ strategy.job-index }}-${{ matrix.arch }}
           path: |
             ${{ steps.attest.outputs.bundle-path }}
             ./wheelhouse/*.whl

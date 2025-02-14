@@ -70,6 +70,7 @@ jobs:
         # why do I need to specify this cpversion here?
         env:
           CIBW_BUILD: ${{ matrix.pybuilds }}
+          CIBW_ARCHS_MACOS: ${{ matrix.arch }}
           CIBW_SKIP: "cp*-manylinux_i686 cp*-musllinux* cp*-win32"  
         run: python -m cibuildwheel --output-dir wheelhouse
 

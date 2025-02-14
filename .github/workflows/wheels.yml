@@ -29,22 +29,32 @@ jobs:
         path: dist/*.tar.gz
 
   build_wheels:
-    name: Build ${{ matrix.cpversion }} wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }} ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-13, macos-14]
-        # cp313 seemed to produce the same wheel name as cp312. Skip unless
-        # necessary.
-        cpversion: [cp38, cp39, cp310, cp311, cp312]
-        # github actions cp38 on macos-14 runners are cross compiling or
-        # something and confusing the stub generation. Just skip it for now.
-        # Maybe it'd be friendlier to disable the stub generation for this
-        # combination.
-        exclude:
-          - os: macos-14
-            cpversion: cp38
+        include:
+        - os: ubuntu-latest
+          pybuilds: cp3{9,10,11,12,13}-manylinux_x86_64
+          arch: x86_64
+          id: linux
+        - os: ubuntu-24.04-arm
+          pybuilds: cp3{9,10,11,12,13}-manylinux_aarch64
+          arch: aarch64
+          id: linux_arm64
+        - os: macos-latest
+          pybuilds: cp3{9,10,11,12,13}-macosx_x86_64
+          arch: x86_64
+          id: macos_x86
+        - os: macos-latest
+          pybuilds: cp3{10,11,12,13}-macosx_arm64
+          arch: arm64
+          id: macos_arm64
+        - os: windows-latest
+          pybuilds: cp3{9,10,11,12,13}-win_amd64
+          arch: x86_64
+          id: windows
 
 
     steps:
@@ -60,9 +70,8 @@ jobs:
       - name: Build wheels
         # why do I need to specify this cpversion here?
         env:
-          CIBW_ARCHS: "auto64"
-          CIBW_BUILD: "${{ matrix.cpversion }}-*"
-          # why isn't auto64 working?
+          CIBW_ARCHS: "native"
+          CIBW_BUILD: ${{ matrix.pybuilds }}
           CIBW_SKIP: "cp*-manylinux_i686 cp*-musllinux* cp*-win32"  
         run: python -m cibuildwheel --output-dir wheelhouse
 
